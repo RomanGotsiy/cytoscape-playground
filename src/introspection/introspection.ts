@@ -5,6 +5,7 @@ import {
   lexicographicSortSchema,
   IntrospectionSchema,
   IntrospectionType,
+  GraphQLSchema,
 } from 'graphql';
 import { SimplifiedIntrospection, SimplifiedIntrospectionWithIds, SimplifiedType } from './types';
 import { typeNameToId } from './utils';
@@ -138,7 +139,7 @@ function markRelayTypes(schema: SimplifiedIntrospectionWithIds): void {
         return;
       }
 
-      const edgesType = connectionType.fields.edges.type
+      const edgesType = connectionType.fields.edges.type;
       if (edgesType.kind !== 'OBJECT' || !edgesType.fields.node) {
         return;
       }
@@ -249,20 +250,17 @@ function assignTypesAndIDs(schema: SimplifiedIntrospection) {
   schema.types = _.keyBy(schema.types, 'id');
 }
 
-export function getSchema(
-  introspection: any,
+export function prepareSchema(
+  schema: GraphQLSchema,
   sortByAlphabet: boolean,
   skipRelay: boolean,
   skipDeprecated: boolean,
 ) {
-  if (!introspection) return null;
-
-  let schema = buildClientSchema(introspection.data);
   if (sortByAlphabet) {
     schema = lexicographicSortSchema(schema);
   }
 
-  introspection = introspectionFromSchema(schema, { descriptions: true });
+  let introspection = introspectionFromSchema(schema, { descriptions: true });
   let simpleSchema = simplifySchema(introspection.__schema);
 
   assignTypesAndIDs(simpleSchema);
@@ -274,4 +272,17 @@ export function getSchema(
     markDeprecated((<any>simpleSchema) as SimplifiedIntrospectionWithIds);
   }
   return simpleSchema;
+}
+
+export function getSchema(
+  introspection: any,
+  sortByAlphabet: boolean,
+  skipRelay: boolean,
+  skipDeprecated: boolean,
+) {
+  if (!introspection) return null;
+
+  let schema = buildClientSchema(introspection.data);
+
+  return prepareSchema(schema, sortByAlphabet, skipRelay, skipDeprecated);
 }

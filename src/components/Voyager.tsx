@@ -1,6 +1,7 @@
 import { introspectionQuery } from 'graphql/utilities';
+import { GraphQLSchema } from 'graphql';
 
-import { getSchema, extractTypeId } from '../introspection';
+import { getSchema, prepareSchema, extractTypeId } from '../introspection';
 import { SVGRender, getTypeGraph } from '../graph/';
 import { WorkerCallback } from '../utils/types';
 
@@ -17,7 +18,7 @@ import Settings from './settings/Settings';
 import './Voyager.css';
 import './viewport.css';
 
-type IntrospectionProvider = (query: string) => Promise<any>;
+type IntrospectionProvider = (query: string) => Promise<Object>;
 
 export interface VoyagerDisplayOptions {
   rootType?: string;
@@ -42,7 +43,8 @@ function normalizeDisplayOptions(options) {
 }
 
 export interface VoyagerProps {
-  introspection: IntrospectionProvider | Object;
+  fetcher?: IntrospectionProvider;
+  schema?: GraphQLSchema;
   displayOptions?: VoyagerDisplayOptions;
   hideDocs?: boolean;
   hideSettings?: boolean;
@@ -54,8 +56,8 @@ export interface VoyagerProps {
 
 export default class Voyager extends React.Component<VoyagerProps> {
   static propTypes = {
-    introspection: PropTypes.oneOfType([PropTypes.func.isRequired, PropTypes.object.isRequired])
-      .isRequired,
+    fetcher: PropTypes.func.isRequired,
+    schema: PropTypes.object,
     displayOptions: PropTypes.shape({
       rootType: PropTypes.string,
       skipRelay: PropTypes.bool,
@@ -89,18 +91,27 @@ export default class Voyager extends React.Component<VoyagerProps> {
   }
 
   componentDidMount() {
-    this.fetchIntrospection();
+    if (this.props.schema) {
+      const displayOptions = normalizeDisplayOptions(this.props.displayOptions);
+
+      this.updateSchema(
+        prepareSchema(
+          this.props.schema,
+          displayOptions.sortByAlphabet,
+          displayOptions.skipRelay,
+          displayOptions.skipDeprecated,
+        ),
+        displayOptions,
+      );
+    } else if (this.props.fetcher) {
+      this.fetchIntrospection();
+    }
   }
 
   fetchIntrospection() {
     const displayOptions = normalizeDisplayOptions(this.props.displayOptions);
 
-    if (typeof this.props.introspection !== 'function') {
-      this.updateIntrospection(this.props.introspection, displayOptions);
-      return;
-    }
-
-    let promise = this.props.introspection(introspectionQuery);
+    let promise = this.props.fetcher(introspectionQuery);
 
     if (!isPromise(promise)) {
       throw new Error('SchemaProvider did not return a Promise for introspection.');
@@ -131,10 +142,18 @@ export default class Voyager extends React.Component<VoyagerProps> {
       displayOptions.skipRelay,
       displayOptions.skipDeprecated,
     );
-    const typeGraph = getTypeGraph(schema, displayOptions.rootType, displayOptions.hideRoot);
+
+    this.updateSchema(schema, displayOptions);
 
     this.setState({
       introspectionData,
+    });
+  }
+
+  updateSchema(schema, displayOptions) {
+    const typeGraph = getTypeGraph(schema, displayOptions.rootType, displayOptions.hideRoot);
+
+    this.setState({
       schema,
       typeGraph,
       displayOptions,
@@ -144,9 +163,22 @@ export default class Voyager extends React.Component<VoyagerProps> {
   }
 
   componentDidUpdate(prevProps: VoyagerProps) {
-    if (this.props.introspection !== prevProps.introspection) {
-      this.fetchIntrospection();
-    } else if (this.props.displayOptions !== prevProps.displayOptions) {
+    const displayOptions = normalizeDisplayOptions(this.props.displayOptions);
+
+    if (this.props.schema && this.props.schema !== prevProps.schema) {
+      this.updateSchema(
+        prepareSchema(
+          this.props.schema,
+          displayOptions.sortByAlphabet,
+          displayOptions.skipRelay,
+          displayOptions.skipDeprecated,
+        ),
+        displayOptions,
+      );
+    } else if (
+      this.state.introspectionData &&
+      this.props.displayOptions !== prevProps.displayOptions
+    ) {
       this.updateIntrospection(
         this.state.introspectionData,
         normalizeDisplayOptions(this.props.displayOptions),
