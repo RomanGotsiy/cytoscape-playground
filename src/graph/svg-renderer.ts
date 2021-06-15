@@ -1,5 +1,6 @@
 import * as _ from 'lodash';
 import { getDot } from './dot';
+import hash from 'object-hash';
 
 import {
   forEachNode,
@@ -31,6 +32,15 @@ export class SVGRender {
   }
 
   renderSvg(typeGraph, displayOptions) {
+    const typeGraphMd5 = hash.MD5(typeGraph);
+    const latestHash = localStorage.getItem('latestHash');
+
+    // trying to store multiple SVGs blows the storage quota really quickly. So we only store the most recent one
+    if (typeGraphMd5 === latestHash) {
+      const cachedSVG = localStorage.getItem('latestSVG');
+      return Promise.resolve(cachedSVG);
+    }
+
     return this.vizPromise
       .then((viz) => {
         console.time('Rendering Graph');
@@ -40,6 +50,8 @@ export class SVGRender {
       .then((rawSVG) => {
         const svg = preprocessVizSVG(rawSVG);
         console.timeEnd('Rendering Graph');
+        localStorage.setItem('latestHash', typeGraphMd5);
+        localStorage.setItem('latestSVG', svg);
         return svg;
       });
   }
